@@ -1,4 +1,9 @@
 env
 master
 worker
+workdir.*/
+buildbot.tac
+http.log
+state.sqlite
+twistd.log
 

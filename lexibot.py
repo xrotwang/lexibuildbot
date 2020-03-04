@@ -3,15 +3,24 @@
 
 from buildbot.plugins import *
 
-# TODO: find a better way to populate this. 
-repolist = [
-    "git://github.com/lexibank/birchallchapacuran.git",
-    "git://github.com/lexibank/wichmannmixezoquean.git",
-]
+from github import Github
+
+exclude = ['pylexibank', 'lexibank']
+
+
+def iter_repos(org):
+    gh = Github()
+    for repo in gh.get_organization(org).get_repos():
+        yield repo
+
 
 def get_name(repo):
     return repo.split("/")[-1].replace(".git", "")
 
+
+# TODO: find a better way to populate this. 
+repolist = [r.clone_url for r in iter_repos('lexibank')]
+repolist = [r for r in repolist if get_name(r) not in exclude]
 
 
 # This is a sample buildmaster config file. It must be installed as
@@ -57,6 +66,14 @@ for repo in repolist:
 
 # Configure the Schedulers, which decide how to react to incoming changes.
 c['schedulers'] = []
+c['schedulers'].append(
+    schedulers.Triggerable(name="release",
+    builderNames=[get_name(repo) for repo in repolist]))
+c['schedulers'].append(
+    schedulers.ForceScheduler(
+          name="release-force",
+         builderNames=['release']
+))
 
 for repo in repolist:
     name = get_name(repo)
@@ -82,6 +99,12 @@ for repo in repolist:
 factory = util.BuildFactory()
 
 c['builders'] = []
+
+release = util.BuildFactory()
+release.addStep(steps.Trigger(schedulerNames=['release'], waitForFinish=False))
+c['builders'].append(
+    util.BuilderConfig(name='release', workernames=["worker"], factory=release)
+)
 
 for repo in repolist:
     name = get_name(repo)  # get nice name
@@ -189,3 +212,4 @@ c['db'] = {
     # http://docs.buildbot.net/current/manual/configuration/global.html#database-specification
     'db_url' : "sqlite:///state.sqlite",
 }
+

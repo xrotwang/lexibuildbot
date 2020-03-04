@@ -1,25 +1,23 @@
 # lexibuildbot
 
 
+
 ## setup master.
 
 ```shell
 python -m venv env
 source ./env/bin/activate
-pip install 'buildbot[bundle]'
 
-buildbot create-master master
+git clone https://github.com/SimonGreenhill/lexibuildbot.git
+pip install -r lexibuildbot/requirements.txt
 
-cp lexibot.cfg master/master.cfg
-
+buildbot create-master -c lexibot.py lexibuildbot
 buildbot start master
 ````
 
 ## setup a worker
 
 ```shell
-# either in this venv or a new one.
-pip install buildbot-worker
 buildbot-worker create-worker worker localhost worker pass
 buildbot-worker start worker
 ```
@@ -39,10 +37,13 @@ open http://localhost:8010
 * click "force" button on top right
 * start build
 
+## Building all
+
+* select "release" builder
+* click "force" button on top right
+* will trigger builds of all other repos
 
 
 # TODO:
 
-* write code to get all repositories and load into lexibot.cfg
 * parsing of errors/warnings?
-* figure out how to run all at once rather than manually. 
