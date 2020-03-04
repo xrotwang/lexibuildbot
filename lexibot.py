@@ -1,30 +1,24 @@
-# -*- python -*-
-# ex: set filetype=python:
-
-from buildbot.plugins import *
+import collections
 
 from github import Github
+
+from buildbot.plugins import *
 
 exclude = ['pylexibank', 'lexibank']
 
 
 def iter_repos(org):
-    gh = Github()
-    for repo in gh.get_organization(org).get_repos():
-        yield repo
+    return Github().get_organization(org).get_repos()
 
 
 def get_name(repo):
     return repo.split("/")[-1].replace(".git", "")
 
 
-# TODO: find a better way to populate this. 
-repolist = [r.clone_url for r in iter_repos('lexibank')]
-repolist = [r for r in repolist if get_name(r) not in exclude]
+repos = [r.clone_url for r in iter_repos('lexibank')]
+repos = collections.OrderedDict(
+    sorted([(get_name(r), r) for r in repos if get_name(r) not in exclude]))
 
-
-# This is a sample buildmaster config file. It must be installed as
-# 'master.cfg' in your buildmaster's base directory.
 
 # This is the dictionary that the buildmaster pays attention to. We also use
 # a shorter alias to save typing.
@@ -50,45 +44,32 @@ c['protocols'] = {'pb': {'port': 9989}}
 # the 'change_source' setting tells the buildmaster how it should find out
 # about source code changes.  Here we point to the buildbot version of a python hello-world project.
 
-c['change_source'] = []
-
-for repo in repolist:
-    name = get_name(repo)
-    c['change_source'].append(changes.GitPoller(
+c['change_source'] = [
+    changes.GitPoller(
         repo,
         workdir='workdir.%s' % name,
         branch='master',
         pollInterval=300
-    ))
-
+   ) for name, repo in repos.items()]
 
 ####### SCHEDULERS
 
 # Configure the Schedulers, which decide how to react to incoming changes.
-c['schedulers'] = []
-c['schedulers'].append(
-    schedulers.Triggerable(name="release",
-    builderNames=[get_name(repo) for repo in repolist]))
-c['schedulers'].append(
-    schedulers.ForceScheduler(
-          name="release-force",
-         builderNames=['release']
-))
+c['schedulers'] = [
+    schedulers.Triggerable(name="release", builderNames=[get_name(repo) for repo in repos]),
+    schedulers.ForceScheduler(name="release-force", builderNames=['release'])
+]
 
-for repo in repolist:
-    name = get_name(repo)
-    c['schedulers'].append(schedulers.SingleBranchScheduler(
-                            name=name,
-                            change_filter=util.ChangeFilter(branch='master'),
-                            treeStableTimer=None,
-                            builderNames=[name]
-    ))
-    c['schedulers'].append(schedulers.ForceScheduler(
-                            name="%s-force" % name,
-                            builderNames=[name]
-    ))
-
-
+for name, repo in repos.items():
+    c['schedulers'].extend([
+        schedulers.SingleBranchScheduler(
+            name=name,
+            change_filter=util.ChangeFilter(branch='master'),
+            treeStableTimer=None,
+            builderNames=[name]
+        ),
+        schedulers.ForceScheduler(name="%s-force" % name, builderNames=[name]),
+    ])
 
 ####### BUILDERS
 
@@ -102,18 +83,14 @@ c['builders'] = []
 
 release = util.BuildFactory()
 release.addStep(steps.Trigger(schedulerNames=['release'], waitForFinish=False))
-c['builders'].append(
-    util.BuilderConfig(name='release', workernames=["worker"], factory=release)
-)
+c['builders'].append(util.BuilderConfig(name='release', workernames=["worker"], factory=release))
 
-for repo in repolist:
-    name = get_name(repo)  # get nice name
-    
+for name, repo in repos.items():
     factory = util.BuildFactory()
-    
+
     # check out the source
     factory.addStep(steps.Git(repourl=repo, mode='full', method="fresh"))
-    
+
     # install and upgrade
     factory.addStep(
         steps.ShellCommand(
@@ -135,7 +112,15 @@ for repo in repolist:
     # make cldf
     # TODO.. need glottolog and concepticon
     # cldfbench lexibank.makecldf --glottolog-version v4.1 --concepticon-version v2.2.1 "${1}"
-    
+    #factory.addStep(
+    #    steps.ShellCommand(
+    #        command=["cldfbench", "lexibank.makecldf", "cldf/cldf-metadata.json"],
+    #        workdir="build",
+    #        env={"PYTHONPATH": "."},
+    #        name="validate"
+    #    )
+    #)
+
     # validate
     factory.addStep(
         steps.ShellCommand(
@@ -153,7 +138,7 @@ for repo in repolist:
             name="pytest"
         )
     )
-    
+
     # run checkss
     factory.addStep(
         steps.ShellCommand(
@@ -163,16 +148,11 @@ for repo in repolist:
             name="lexicheck"
         )
     )
-    
-    
+
     # add builder
     c['builders'].append(
         util.BuilderConfig(name=name, workernames=["worker"], factory=factory)
     )
-
-
-
-
 
 ####### BUILDBOT SERVICES
 
@@ -210,6 +190,5 @@ c['db'] = {
     # It's easy to start with sqlite, but it's recommended to switch to a dedicated
     # database, such as PostgreSQL or MySQL, for use in production environments.
     # http://docs.buildbot.net/current/manual/configuration/global.html#database-specification
-    'db_url' : "sqlite:///state.sqlite",
+    'db_url': "sqlite:///state.sqlite",
 }
-

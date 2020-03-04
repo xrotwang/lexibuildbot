@@ -6,4 +6,4 @@ buildbot.tac
 http.log
 state.sqlite
 twistd.log
-
+.idea
